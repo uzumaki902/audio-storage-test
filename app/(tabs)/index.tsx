@@ -1,6 +1,6 @@
 // app/(tabs)/index.tsx
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Animated,
@@ -17,7 +17,7 @@ import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Haptics from "expo-haptics";
 
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 
 import { supabase } from "../../lib/supabase";
 
@@ -40,7 +40,26 @@ export default function HomeScreen() {
 
   const [statusText, setStatusText] = useState("Ready");
 
+  const [hasPermission, setHasPermission] = useState(false);
+
   const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // Re-assert recording audio mode every time this screen is focused
+  // (navigating to recordings.tsx changes it to allowsRecordingIOS:false)
+  useFocusEffect(
+    useCallback(() => {
+      (async () => {
+        const permission = await Audio.requestPermissionsAsync();
+        if (permission.granted) {
+          setHasPermission(true);
+          await Audio.setAudioModeAsync({
+            allowsRecordingIOS: true,
+            playsInSilentModeIOS: true,
+          });
+        }
+      })();
+    }, [])
+  );
 
   useEffect(() => {
     if (isRecording) {
@@ -64,22 +83,14 @@ export default function HomeScreen() {
 
   async function startRecording() {
     try {
-      await Haptics.impactAsync(
-        Haptics.ImpactFeedbackStyle.Medium
-      );
-
-      const permission =
-        await Audio.requestPermissionsAsync();
-
-      if (!permission.granted) {
+      if (!hasPermission) {
         Alert.alert("Permission required");
         return;
       }
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
+      await Haptics.impactAsync(
+        Haptics.ImpactFeedbackStyle.Medium
+      );
 
       const { recording } =
         await Audio.Recording.createAsync(
@@ -241,7 +252,7 @@ export default function HomeScreen() {
       <TouchableOpacity
         style={styles.savedButton}
         onPress={() =>
-          router.push("/(tabs)/recordings")
+          router.push("/recordings")
         }
       >
         <Text style={styles.savedButtonText}>
