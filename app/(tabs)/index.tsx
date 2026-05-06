@@ -10,21 +10,37 @@ import {
   View,
 } from "react-native";
 
+import { supabase } from "../../lib/supabase";
+
 const successSound = require("../../assets/sounds/success.mp3");
 
 export default function HomeScreen() {
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
-  const [recordingUri, setRecordingUri] = useState<string | null>(null);
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [recording, setRecording] =
+    useState<Audio.Recording | null>(null);
 
-  const [isRecording, setIsRecording] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [recordingUri, setRecordingUri] =
+    useState<string | null>(null);
 
-  const [showToast, setShowToast] = useState(false);
+  const [uploadedUrl, setUploadedUrl] =
+    useState("");
 
-  const [statusText, setStatusText] = useState("Ready to record");
+  const [sound, setSound] =
+    useState<Audio.Sound | null>(null);
 
-  const pulseAnim = useState(new Animated.Value(1))[0];
+  const [isRecording, setIsRecording] =
+    useState(false);
+
+  const [isPlaying, setIsPlaying] =
+    useState(false);
+
+  const [showToast, setShowToast] =
+    useState(false);
+
+  const [statusText, setStatusText] =
+    useState("Ready to record");
+
+  const pulseAnim =
+    useState(new Animated.Value(1))[0];
 
   useEffect(() => {
     let animation: Animated.CompositeAnimation;
@@ -58,8 +74,68 @@ export default function HomeScreen() {
   }, [isRecording]);
 
   async function playUiSound(soundFile: any) {
-    const { sound } = await Audio.Sound.createAsync(soundFile);
+    const { sound } =
+      await Audio.Sound.createAsync(soundFile);
+
     await sound.playAsync();
+  }
+
+  async function uploadToSupabase(
+    fileUri: string
+  ) {
+    try {
+      setStatusText("Uploading to cloud...");
+
+      const fileName = `recording-${Date.now()}.m4a`;
+
+      const response = await fetch(fileUri);
+
+      const arrayBuffer =
+        await response.arrayBuffer();
+
+      const { error } = await supabase.storage
+        .from("recordings")
+        .upload(fileName, arrayBuffer, {
+          contentType: "audio/m4a",
+        });
+
+      if (error) {
+        console.log("Upload error:", error);
+
+        setStatusText(
+          "Cloud upload failed"
+        );
+
+        return;
+      }
+
+      const { data: publicUrlData } =
+        supabase.storage
+          .from("recordings")
+          .getPublicUrl(fileName);
+
+      setUploadedUrl(
+        publicUrlData.publicUrl
+      );
+
+      console.log(
+        "Uploaded URL:",
+        publicUrlData.publicUrl
+      );
+
+      setStatusText(
+        "Uploaded to cloud successfully"
+      );
+    } catch (err) {
+      console.log(
+        "Supabase upload failed:",
+        err
+      );
+
+      setStatusText(
+        "Cloud upload failed"
+      );
+    }
   }
 
   async function startRecording() {
@@ -68,10 +144,14 @@ export default function HomeScreen() {
         Haptics.ImpactFeedbackStyle.Medium
       );
 
-      const permission = await Audio.requestPermissionsAsync();
+      const permission =
+        await Audio.requestPermissionsAsync();
 
       if (!permission.granted) {
-        alert("Microphone permission is required.");
+        alert(
+          "Microphone permission is required."
+        );
+
         return;
       }
 
@@ -80,18 +160,28 @@ export default function HomeScreen() {
         playsInSilentModeIOS: true,
       });
 
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
+      const { recording } =
+        await Audio.Recording.createAsync(
+          Audio.RecordingOptionsPresets
+            .HIGH_QUALITY
+        );
 
       setRecording(recording);
+
       setIsRecording(true);
 
-      setStatusText("Recording started • Speak now");
+      setStatusText(
+        "Recording started • Speak now"
+      );
     } catch (err) {
-      console.log("Failed to start recording", err);
+      console.log(
+        "Failed to start recording",
+        err
+      );
 
-      setStatusText("Failed to start recording");
+      setStatusText(
+        "Failed to start recording"
+      );
     }
   }
 
@@ -104,17 +194,21 @@ export default function HomeScreen() {
       await playUiSound(successSound);
 
       await Haptics.notificationAsync(
-        Haptics.NotificationFeedbackType.Success
+        Haptics.NotificationFeedbackType
+          .Success
       );
 
       const uri = recording.getURI();
 
       setRecording(null);
+
       setRecordingUri(uri || null);
 
-      setIsRecording(false);
+      if (uri) {
+        await uploadToSupabase(uri);
+      }
 
-      setStatusText("Recording saved successfully");
+      setIsRecording(false);
 
       setShowToast(true);
 
@@ -122,11 +216,19 @@ export default function HomeScreen() {
         setShowToast(false);
       }, 2500);
 
-      console.log("Recording saved at:", uri);
+      console.log(
+        "Recording saved at:",
+        uri
+      );
     } catch (err) {
-      console.log("Failed to stop recording", err);
+      console.log(
+        "Failed to stop recording",
+        err
+      );
 
-      setStatusText("Failed to stop recording");
+      setStatusText(
+        "Failed to stop recording"
+      );
     }
   }
 
@@ -134,8 +236,12 @@ export default function HomeScreen() {
     try {
       await Haptics.selectionAsync();
 
-      if (!recordingUri) {
+      const audioSource =
+        uploadedUrl || recordingUri;
+
+      if (!audioSource) {
         setStatusText("No recording found");
+
         return;
       }
 
@@ -143,9 +249,10 @@ export default function HomeScreen() {
         await sound.unloadAsync();
       }
 
-      const { sound: newSound } = await Audio.Sound.createAsync({
-        uri: recordingUri,
-      });
+      const { sound: newSound } =
+        await Audio.Sound.createAsync({
+          uri: audioSource,
+        });
 
       setSound(newSound);
 
@@ -153,54 +260,84 @@ export default function HomeScreen() {
 
       setIsPlaying(true);
 
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          setIsPlaying(false);
+      newSound.setOnPlaybackStatusUpdate(
+        (status) => {
+          if (
+            status.isLoaded &&
+            status.didJustFinish
+          ) {
+            setIsPlaying(false);
+          }
         }
-      });
+      );
 
       await newSound.playAsync();
     } catch (err) {
-      console.log("Failed to play recording", err);
+      console.log(
+        "Failed to play recording",
+        err
+      );
 
-      setStatusText("Failed to play recording");
+      setStatusText(
+        "Failed to play recording"
+      );
     }
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.title}>Audio Storage Test</Text>
+      <Text style={styles.title}>
+        Audio Storage Test
+      </Text>
 
       <Animated.View
         style={[
           styles.recordingWrapper,
           {
-            transform: [{ scale: pulseAnim }],
-            opacity: isRecording ? 1 : 0.5,
+            transform: [
+              { scale: pulseAnim },
+            ],
+            opacity: isRecording
+              ? 1
+              : 0.5,
           },
         ]}
       >
-        <View style={styles.recordingIndicator} />
+        <View
+          style={styles.recordingIndicator}
+        />
 
         <Text style={styles.recordingText}>
-          {isRecording ? "RECORDING LIVE" : "NOT RECORDING"}
+          {isRecording
+            ? "RECORDING LIVE"
+            : "NOT RECORDING"}
         </Text>
       </Animated.View>
 
-      <Text style={styles.status}>{statusText}</Text>
+      <Text style={styles.status}>
+        {statusText}
+      </Text>
 
       {recordingUri && (
         <View style={styles.audioCard}>
-          <Text style={styles.audioCardTitle}>
+          <Text
+            style={styles.audioCardTitle}
+          >
             Voice Note Saved
           </Text>
 
-          <Text style={styles.audioCardSubtext}>
-            Ready for upload
+          <Text
+            style={styles.audioCardSubtext}
+          >
+            {uploadedUrl
+              ? "Uploaded to cloud storage"
+              : "Ready for upload"}
           </Text>
 
           {isPlaying && (
-            <Text style={styles.playingText}>
+            <Text
+              style={styles.playingText}
+            >
               Playing Audio...
             </Text>
           )}
@@ -211,33 +348,42 @@ export default function HomeScreen() {
         style={({ pressed }) => [
           styles.button,
           styles.recordButton,
-          pressed && styles.buttonPressed,
+          pressed &&
+          styles.buttonPressed,
         ]}
         onPress={startRecording}
       >
-        <Text style={styles.buttonText}>START RECORDING</Text>
+        <Text style={styles.buttonText}>
+          START RECORDING
+        </Text>
       </Pressable>
 
       <Pressable
         style={({ pressed }) => [
           styles.button,
           styles.stopButton,
-          pressed && styles.buttonPressed,
+          pressed &&
+          styles.buttonPressed,
         ]}
         onPress={stopRecording}
       >
-        <Text style={styles.buttonText}>STOP RECORDING</Text>
+        <Text style={styles.buttonText}>
+          STOP RECORDING
+        </Text>
       </Pressable>
 
       <Pressable
         style={({ pressed }) => [
           styles.button,
           styles.playButton,
-          pressed && styles.buttonPressed,
+          pressed &&
+          styles.buttonPressed,
         ]}
         onPress={playRecording}
       >
-        <Text style={styles.buttonText}>PLAY RECORDING</Text>
+        <Text style={styles.buttonText}>
+          PLAY RECORDING
+        </Text>
       </Pressable>
 
       {showToast && (
