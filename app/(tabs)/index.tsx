@@ -241,7 +241,7 @@ export default function HomeScreen() {
       <TouchableOpacity
         style={styles.savedButton}
         onPress={() =>
-          router.push("/recordings")
+          router.push("/(tabs)/recordings")
         }
       >
         <Text style={styles.savedButtonText}>
