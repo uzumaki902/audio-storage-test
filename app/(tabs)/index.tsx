@@ -1,4 +1,5 @@
 import { Audio } from "expo-av";
+import * as Haptics from "expo-haptics";
 import React, { useEffect, useState } from "react";
 import {
   Animated,
@@ -50,6 +51,10 @@ export default function HomeScreen() {
 
   async function startRecording() {
     try {
+      await Haptics.impactAsync(
+        Haptics.ImpactFeedbackStyle.Medium
+      );
+
       const permission = await Audio.requestPermissionsAsync();
 
       if (!permission.granted) {
@@ -79,6 +84,10 @@ export default function HomeScreen() {
 
   async function stopRecording() {
     try {
+      await Haptics.notificationAsync(
+        Haptics.NotificationFeedbackType.Success
+      );
+
       if (!recording) return;
 
       await recording.stopAndUnloadAsync();
@@ -99,6 +108,8 @@ export default function HomeScreen() {
 
   async function playRecording() {
     try {
+      await Haptics.selectionAsync();
+
       if (!recordingUri) {
         setStatusText("No recording found");
         return;
